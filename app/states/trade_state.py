@@ -44,6 +44,18 @@ class TradeState(rx.State):
     order_quantity: int = 0
     transactions: list[Transaction] = []
 
+    @rx.event
+    def set_order_type(self, order_type: Literal["BUY", "SELL"]):
+        self.order_type = order_type
+
+    @rx.event
+    def set_order_quantity(self, quantity: str):
+        try:
+            self.order_quantity = int(quantity)
+        except (ValueError, TypeError) as e:
+            logging.exception(f"Error setting order quantity: {e}")
+            self.order_quantity = 0
+
     @rx.var
     def is_stock_selected(self) -> bool:
         return self.selected_stock is not None
