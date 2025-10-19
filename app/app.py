@@ -8,7 +8,6 @@ from app.components.trade_page import trade_page
 from app.components.portfolio_page import portfolio_page
 from app.components.leaderboard_page import leaderboard_page
 from app.components.login_page import login_page
-from reflex_google_auth import google_oauth_provider
 
 
 def dashboard() -> rx.Component:
@@ -41,13 +40,7 @@ def dashboard() -> rx.Component:
 
 def index() -> rx.Component:
     return rx.el.main(
-        google_oauth_provider(
-            rx.cond(
-                AuthState.is_authenticated,
-                dashboard(),
-                rx.cond(AuthState.token_is_valid, rx.spinner(), login_page()),
-            )
-        ),
+        rx.cond(AuthState.is_authenticated, dashboard(), login_page()),
         class_name="font-['Inter'] bg-gray-50",
         on_mount=AuthState.on_load,
     )

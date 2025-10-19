@@ -14,7 +14,7 @@ def header() -> rx.Component:
                         class_name="text-sm font-semibold text-gray-700",
                     ),
                     rx.image(
-                        src=AuthState.user["avatar_url"],
+                        src=f"https://api.dicebear.com/9.x/initials/svg?seed={AuthState.user['name']}",
                         class_name="h-9 w-9 rounded-full border-2 border-purple-200",
                     ),
                     rx.el.button(

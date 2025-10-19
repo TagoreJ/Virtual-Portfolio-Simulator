@@ -1,7 +1,7 @@
-# Portfolio Management System - Enhanced with Authentication ✅
+# Portfolio Management System - Simple Authentication ✅
 
 ## Overview
-Building a feature-complete virtual stock trading platform with Google OAuth authentication, user account management, and Supabase integration for persistent data storage. Each new user starts with ₹1,00,000 virtual currency and builds their portfolio from scratch.
+Building a feature-complete virtual stock trading platform with simple name/email authentication and Supabase integration for persistent data storage. Each new user starts with ₹1,00,000 virtual currency and builds their portfolio from scratch.
 
 ---
 
@@ -116,14 +116,15 @@ After executing the SQL, verify in Supabase:
 
 ---
 
-## Phase 4: Google OAuth Authentication & Login System ✅
-- [x] Create login page with Google Sign-In button as entry point
-- [x] Integrate reflex-google-auth for OAuth 2.0 authentication flow
-- [x] Set up authentication state with user session management and Supabase integration
-- [x] Add protected route middleware to require login for all dashboard pages
-- [x] Display user profile info (name, email, avatar) in header with logout button
+## Phase 4: Simple Name/Email Authentication System ✅
+- [x] Create login page with name and email input fields
+- [x] Remove all Google OAuth dependencies and code
+- [x] Implement simple authentication using name/email as credentials
+- [x] Store user session in LocalStorage using JSON serialization
+- [x] Add protected route logic to require name/email for dashboard access
+- [x] Display user name in header with logout button
 - [x] On first login, create new user in Supabase with ₹1,00,000 starting cash
-- [x] Implement on_load check to validate token and restore user session
+- [x] Implement on_load check to restore user session from LocalStorage
 
 ---
 
@@ -151,8 +152,20 @@ After executing the SQL, verify in Supabase:
 
 ---
 
+## Phase 7: Remove Google Authentication ✅
+- [x] Remove reflex-google-auth dependency and imports
+- [x] Replace Google OAuth flow with simple name/email form
+- [x] Update AuthState to use email-based user_id instead of Google tokens
+- [x] Remove token validation and Google-specific authentication logic
+- [x] Keep all Supabase integration and user data persistence
+- [x] Update login_page component with simple name/email inputs
+- [x] Fix JSON serialization for user session storage
+- [x] Test authentication flow with new simple login system
+
+---
+
 ## Technical Stack
-- Authentication: reflex-google-auth with OAuth 2.0
+- Authentication: Simple name/email form (no OAuth)
 - Database: Supabase (PostgreSQL) for persistent storage
 - Backend: Reflex State Management with async database operations
 - Data: Yahoo Finance API (yfinance library) for real-time stock prices
@@ -162,18 +175,19 @@ After executing the SQL, verify in Supabase:
 ---
 
 ## Current Status
-✅ **ALL PHASES COMPLETE** - Full-stack trading simulator ready for deployment!
+✅ **ALL PHASES COMPLETE** - Full-stack trading simulator with simple authentication ready!
 
 ---
 
 ## 📝 Implementation Summary
 
 ### ✅ What's Working:
-1. **Authentication Flow**
-   - Google OAuth login with reflex-google-auth
-   - Protected routes requiring authentication
-   - User session management with token validation
+1. **Simple Authentication Flow**
+   - Name and email input form
+   - Direct access without OAuth
+   - User session stored in LocalStorage
    - Automatic user creation on first login
+   - Logout functionality clears session
 
 2. **Data Persistence**
    - All user data stored in Supabase (portfolios, holdings, transactions, watchlist)
@@ -199,6 +213,7 @@ After executing the SQL, verify in Supabase:
    - Dashboard, Trade, Portfolio, and Leaderboard pages
    - Interactive charts and data visualizations
    - Professional purple accent theme
+   - Clean login page with name/email form
 
 ---
 
@@ -208,14 +223,12 @@ After executing the SQL, verify in Supabase:
 Execute the SQL script above in Supabase SQL Editor to create all tables.
 
 ### 2. Environment Variables (Already Set)
-- ✅ GOOGLE_CLIENT_ID
-- ✅ GOOGLE_CLIENT_SECRET
 - ✅ SUPABASE_URL
 - ✅ SUPABASE_KEY
 
 ### 3. Testing the Application
 1. Run `reflex run` to start the development server
-2. Sign in with Google account
+2. Enter your name and email on the login page
 3. You'll receive ₹1,00,000 virtual currency
 4. Search for Indian stocks (e.g., RELIANCE.NS, TCS.NS)
 5. Execute buy/sell orders
@@ -229,7 +242,7 @@ Execute the SQL script above in Supabase SQL Editor to create all tables.
 
 ## 🎯 Key Features
 
-- ✅ Google OAuth authentication
+- ✅ Simple name/email authentication (no OAuth required)
 - ✅ Virtual ₹1,00,000 starting balance per user
 - ✅ Real NSE/BSE stock data from Yahoo Finance
 - ✅ Live price updates and historical charts
@@ -242,3 +255,4 @@ Execute the SQL script above in Supabase SQL Editor to create all tables.
 - ✅ Leaderboard (UI ready, requires multi-user data)
 - ✅ Persistent data storage in Supabase
 - ✅ Responsive design for mobile/desktop
+- ✅ Session persistence with LocalStorage
