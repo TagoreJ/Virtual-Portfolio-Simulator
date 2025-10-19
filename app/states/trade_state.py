@@ -148,10 +148,11 @@ class TradeState(rx.State):
 
     @rx.event
     async def toggle_watchlist(self, ticker: str):
-        if not self.is_authenticated:
+        dashboard_state = await self.get_state(DashboardState)
+        if not dashboard_state.is_authenticated or not dashboard_state.user:
             return
-        client = self._get_supabase_client()
-        user_id = self.user["user_id"]
+        client = dashboard_state._get_supabase_client()
+        user_id = dashboard_state.user["user_id"]
         try:
             if ticker in self.watchlist:
                 self.watchlist.remove(ticker)
@@ -172,11 +173,15 @@ class TradeState(rx.State):
     async def execute_order(self):
         async with self:
             can_submit = await self.get_var_value(self.can_submit_order)
-            if not can_submit or not self.is_authenticated:
-                return
             dashboard_state = await self.get_state(DashboardState)
-        client = self._get_supabase_client()
-        user_id = self.user["user_id"]
+            if (
+                not can_submit
+                or not dashboard_state.is_authenticated
+                or (not dashboard_state.user)
+            ):
+                return
+        client = dashboard_state._get_supabase_client()
+        user_id = dashboard_state.user["user_id"]
         order_data = {
             "ticker": self.selected_stock["ticker"],
             "name": self.selected_stock["name"],
@@ -186,17 +191,6 @@ class TradeState(rx.State):
             "total": self.estimated_total,
         }
         try:
-            if self.order_type == "BUY":
-                yield dashboard_state.buy_stock(
-                    order_data["ticker"],
-                    order_data["name"],
-                    order_data["quantity"],
-                    order_data["price"],
-                )
-            else:
-                yield dashboard_state.sell_stock(
-                    order_data["ticker"], order_data["quantity"], order_data["price"]
-                )
             transaction_record = {
                 "user_id": user_id,
                 "ticker": order_data["ticker"],
@@ -206,14 +200,18 @@ class TradeState(rx.State):
                 "total": order_data["total"],
             }
             client.table("transactions").insert(transaction_record).execute()
-            async with self:
-                self.transactions.insert(
-                    0,
-                    {
-                        "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        **transaction_record,
-                    },
+            if self.order_type == "BUY":
+                await dashboard_state.buy_stock(
+                    order_data["ticker"],
+                    order_data["name"],
+                    order_data["quantity"],
+                    order_data["price"],
                 )
+            else:
+                await dashboard_state.sell_stock(
+                    order_data["ticker"], order_data["quantity"], order_data["price"]
+                )
+            async with self:
                 self.order_quantity = 0
             logging.info(f"Order executed and saved for user {user_id}: {order_data}")
         except Exception as e:

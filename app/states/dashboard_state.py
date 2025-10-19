@@ -88,53 +88,85 @@ class DashboardState(AuthState):
     @rx.event(background=True)
     async def load_user_data(self):
         async with self:
-            if not self.is_authenticated:
+            if not self.is_authenticated or not self.user:
+                logging.warning("load_user_data called without authentication.")
                 return
-            client = self._get_supabase_client()
-            user_id = self.user["user_id"]
-            portfolio_res = (
-                client.table("portfolios")
-                .select("available_cash")
-                .eq("user_id", user_id)
-                .single()
-                .execute()
-            )
-            if portfolio_res.data:
-                self.available_cash = portfolio_res.data["available_cash"]
-            holdings_res = (
-                client.table("holdings").select("*").eq("user_id", user_id).execute()
-            )
-            holdings_data = holdings_res.data
-            from app.states.trade_state import TradeState
+            try:
+                client = self._get_supabase_client()
+                user_id = self.user["user_id"]
+                portfolio_res = (
+                    client.table("portfolios")
+                    .select("available_cash")
+                    .eq("user_id", user_id)
+                    .maybe_single()
+                    .execute()
+                )
+                if portfolio_res.data:
+                    self.available_cash = portfolio_res.data["available_cash"]
+                else:
+                    self.available_cash = 100000.0
+                    logging.warning(
+                        f"No portfolio found for user {user_id}, defaulting cash."
+                    )
+                holdings_res = (
+                    client.table("holdings")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                holdings_data = holdings_res.data if holdings_res.data else []
+                from app.states.trade_state import TradeState
 
-            trade_state = await self.get_state(TradeState)
-            transactions_res = (
-                client.table("transactions")
-                .select("*")
-                .eq("user_id", user_id)
-                .order("timestamp", desc=True)
-                .execute()
-            )
-            trade_state.transactions = [
-                {
-                    "date": tx["timestamp"],
-                    "ticker": tx["ticker"],
-                    "type": tx["type"],
-                    "quantity": tx["quantity"],
-                    "price": tx["price"],
-                    "total": tx["total"],
-                }
-                for tx in transactions_res.data
-            ]
-            watchlist_res = (
-                client.table("watchlist")
-                .select("ticker")
-                .eq("user_id", user_id)
-                .execute()
-            )
-            trade_state.watchlist = [item["ticker"] for item in watchlist_res.data]
+                trade_state = await self.get_state(TradeState)
+                transactions_res = (
+                    client.table("transactions")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .order("timestamp", desc=True)
+                    .execute()
+                )
+                if transactions_res.data:
+                    trade_state.transactions = [
+                        {
+                            "date": tx["timestamp"],
+                            "ticker": tx["ticker"],
+                            "type": tx["type"],
+                            "quantity": tx["quantity"],
+                            "price": tx["price"],
+                            "total": tx["total"],
+                        }
+                        for tx in transactions_res.data
+                    ]
+                else:
+                    trade_state.transactions = []
+                watchlist_res = (
+                    client.table("watchlist")
+                    .select("ticker")
+                    .eq("user_id", user_id)
+                    .execute()
+                )
+                if watchlist_res.data:
+                    trade_state.watchlist = [
+                        item["ticker"] for item in watchlist_res.data
+                    ]
+                else:
+                    trade_state.watchlist = []
+            except Exception as e:
+                logging.exception(f"Error loading user data from Supabase: {e}")
+                self.available_cash = 100000.0
+                self.holdings = []
+                if "trade_state" in locals():
+                    trade_state.transactions = []
+                    trade_state.watchlist = []
+                return
         if holdings_data:
             yield DashboardState.update_holdings_live_data(holdings_data)
+        else:
+            async with self:
+                self.holdings = []
+                self.portfolio_value = self.available_cash
+                self.day_change = 0.0
+                self.day_change_pct = 0.0
 
     @rx.event(background=True)
     async def update_holdings_live_data(self, holdings_data: list[dict]):
@@ -211,7 +243,7 @@ class DashboardState(AuthState):
 
     @rx.event
     async def buy_stock(self, ticker: str, name: str, quantity: int, price: float):
-        if not self.is_authenticated:
+        if not self.is_authenticated or not self.user:
             return
         total_cost = quantity * price
         if self.available_cash < total_cost:
@@ -219,65 +251,73 @@ class DashboardState(AuthState):
             return
         client = self._get_supabase_client()
         user_id = self.user["user_id"]
-        existing_holding = next(
-            (h for h in self.holdings if h["ticker"] == ticker), None
-        )
-        if existing_holding:
-            new_quantity = existing_holding["quantity"] + quantity
-            new_avg_price = (
-                existing_holding["quantity"] * existing_holding["avg_price"]
-                + total_cost
-            ) / new_quantity
-            existing_holding["quantity"] = new_quantity
-            existing_holding["avg_price"] = new_avg_price
-            db_op = (
+        try:
+            existing_holding_res = (
                 client.table("holdings")
-                .update({"quantity": new_quantity, "avg_price": new_avg_price})
+                .select("*")
                 .eq("user_id", user_id)
                 .eq("ticker", ticker)
+                .maybe_single()
+                .execute()
             )
-        else:
-            new_holding = {
-                "ticker": ticker,
-                "name": name,
-                "quantity": quantity,
-                "avg_price": price,
-                "current_price": price,
-                "day_change_pct": 0,
-            }
-            self.holdings.append(new_holding)
-            db_op = client.table("holdings").insert({"user_id": user_id, **new_holding})
-        try:
-            db_op.execute()
+            existing_holding = existing_holding_res.data
+            if existing_holding:
+                new_quantity = existing_holding["quantity"] + quantity
+                new_avg_price = (
+                    existing_holding["quantity"] * existing_holding["avg_price"]
+                    + total_cost
+                ) / new_quantity
+                client.table("holdings").update(
+                    {"quantity": new_quantity, "avg_price": new_avg_price}
+                ).eq("user_id", user_id).eq("ticker", ticker).execute()
+            else:
+                new_holding_data = {
+                    "user_id": user_id,
+                    "ticker": ticker,
+                    "name": name,
+                    "quantity": quantity,
+                    "avg_price": price,
+                }
+                client.table("holdings").insert(new_holding_data).execute()
             self.available_cash -= total_cost
             client.table("portfolios").update(
                 {"available_cash": self.available_cash}
             ).eq("user_id", user_id).execute()
-            logging.info(f"BUY successful for {quantity} {ticker} @ {price}")
+            await self.load_user_data()
+            logging.info(
+                f"BUY successful for {quantity} {ticker} @ {price} for user {user_id}"
+            )
         except Exception as e:
             logging.exception(f"Supabase error on buy_stock: {e}")
 
     @rx.event
     async def sell_stock(self, ticker: str, quantity: int, price: float):
-        if not self.is_authenticated:
-            return
-        holding_to_sell = next(
-            (h for h in self.holdings if h["ticker"] == ticker), None
-        )
-        if not holding_to_sell or holding_to_sell["quantity"] < quantity:
-            logging.warning("Invalid sell order: Not enough quantity.")
+        if not self.is_authenticated or not self.user:
             return
         client = self._get_supabase_client()
         user_id = self.user["user_id"]
-        total_proceeds = quantity * price
         try:
+            holding_res = (
+                client.table("holdings")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("ticker", ticker)
+                .maybe_single()
+                .execute()
+            )
+            holding_to_sell = holding_res.data
+            if not holding_to_sell or holding_to_sell["quantity"] < quantity:
+                logging.warning(
+                    "Invalid sell order: Not enough quantity or holding not found."
+                )
+                return
+            total_proceeds = quantity * price
             if holding_to_sell["quantity"] > quantity:
-                holding_to_sell["quantity"] -= quantity
-                client.table("holdings").update(
-                    {"quantity": holding_to_sell["quantity"]}
-                ).eq("user_id", user_id).eq("ticker", ticker).execute()
+                new_quantity = holding_to_sell["quantity"] - quantity
+                client.table("holdings").update({"quantity": new_quantity}).eq(
+                    "user_id", user_id
+                ).eq("ticker", ticker).execute()
             else:
-                self.holdings = [h for h in self.holdings if h["ticker"] != ticker]
                 client.table("holdings").delete().eq("user_id", user_id).eq(
                     "ticker", ticker
                 ).execute()
@@ -285,6 +325,9 @@ class DashboardState(AuthState):
             client.table("portfolios").update(
                 {"available_cash": self.available_cash}
             ).eq("user_id", user_id).execute()
-            logging.info(f"SELL successful for {quantity} {ticker} @ {price}")
+            await self.load_user_data()
+            logging.info(
+                f"SELL successful for {quantity} {ticker} @ {price} for user {user_id}"
+            )
         except Exception as e:
             logging.exception(f"Supabase error on sell_stock: {e}")
